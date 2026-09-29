@@ -1,0 +1,459 @@
+openapi: 3.0.3
+info:
+  title: asystom-advisor-external-api
+  description: The Asystom Advisor external REST API.
+               Includes retrieval of Sentinel acquired data, ML-inferred data such as anomaly score and advised fault similarities,
+               dashboard management and Sentinel device configuration.
+  version: 2.15.0
+  license:
+    name: Asystom
+    url: https://asystom.com
+
+servers:
+- url: https://patrick.asystom.com/dev
+  description: Asystom development server
+
+security:
+- BasicAuth: []
+- OAuth2: []
+
+paths:
+  /api:
+    get:
+      summary: Fetch device data or metadata
+      operationId: genericFetchOperation
+      parameters:
+        - in: query
+          name: device_mac
+          schema:
+            type: string
+            example: 00-00-00-00-00-00-00-01
+        - in: query
+          name: datatype
+          schema:
+            type: string
+            enum:
+              - Batt_Lvl                # Battery level over time
+              - Temperature             # Environmental temperature
+              - Signature               # Vibration, sound, acceleration, velocity, etc.
+              - Signature_Settings      # FFT config and analysis parameters
+              - Signature_SpectrumZoom  # Focused FFT spectrum
+              - Signature_Anomaly       # Detected anomalies
+              - All                     # All known types of device data
+              - IdCard                  # Device metadata and firmware
+              - DeviceList              # All devices with metadata
+              - AnomalyList             # Anomalies per device
+              - AlertList               # Active alerts
+              - AlertHistory            # Past alerts
+              - TrainingSessionList     # Machine Learning training sessions
+              - BeaconVersionHistory    # Firmware upgrade history
+        - in: query
+          name: last
+          schema:
+            type: integer
+          description: The number of data to be returned (starting from the last one)
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+          description: The start date/time of time frame to get results from; format is RFC3339
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+          description: The end date/time of time frame to get results from; format is RFC3339
+      responses:
+        '200':
+          description: Successful response with device data
+        '202':
+          description: A long job has been started
+        '400':
+          description: Malformed request
+        '401':
+          description: Authentication failure
+        '410':
+          description: Long job result unavailable or expired
+        '500':
+          description: Server error
+      security:
+        - OAuth2:
+          - Assets.Readers
+
+  /devices:
+    get:
+      summary: List all registered devices with machine names
+      operationId: getDeviceList
+      responses:
+        "200":
+          description: All the devices attached to the specified organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceList'
+        "400":
+          description: invalid arguments
+        "401":
+          description: unauthorized
+        "500":
+          description: server error when getting the list of devices
+      security:
+      - GrafanaToken: []
+      - OAuth2:
+        - Assets.Readers
+
+  /dashboard:
+    post:
+      summary: Create a new Grafana dashboard
+      description: This operation creates a dashboard for the specified machine
+      operationId: createDashboard
+      requestBody:
+        description: Dashboard creation information
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardCreationInfo'
+      responses:
+        '201':
+          description: Dashboard successfully created
+        '401':
+          description: Invalid credentials or token
+        '403':
+          description: Forbidden
+        '400':
+          description: invalid arguments
+        '500':
+          description: server error when creating a dashboard
+      security:
+        - OAuth2:
+          - Assets.Writers
+
+    put:
+      summary: Update an existing dashboard
+      operationId: updateDashboard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardUpdateInfo'
+      responses:
+        '200':
+          description: Dashboard successfully updated
+        '401':
+          description: Invalid credentials
+        '403':
+          description: User input error
+        '404':
+          description: Dashboard not found
+        '500':
+          description: Server error
+      security:
+        - OAuth2:
+          - Assets.Writers
+
+    delete:
+      summary: Remove an existing dashboard
+      operationId: deleteDashboard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardUpdateInfo'
+      responses:
+        '200':
+          description: Dashboard successfully updated
+        '401':
+          description: Invalid credentials
+        '403':
+          description: User input error
+        '404':
+          description: Dashboard not found
+        '500':
+          description: Server error
+      security:
+        - OAuth2:
+          - Assets.Writers
+
+  /beacon_settings:
+    get:
+      summary: Returns the settings of a device
+      operationId: getDeviceSettings
+      requestBody:
+        description: Dashboard creation information
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardCreationInfo'
+      responses:
+        "200":
+          description: successfully retrieved device settings
+        "400":
+          description: invalid arguments
+        "401":
+          description: unauthorized
+        "500":
+          description: server error when getting settings of a device
+      security:
+        - OAuth2:
+          - Assets.Readers
+
+    post:
+      summary: Update beacon settings or reboot a beacon
+      operationId: updateDeviceSettings
+      requestBody:
+        description: Device settings information
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceSettingsInfo'
+      responses:
+        '200':
+          description: Settings registered successfully
+        '400':
+          description: Invalid arguments
+        '401':
+          description: Invalid credentials
+        '404':
+          description: Device not found
+        '500':
+          description: Server error when updating a device settings
+      security:
+        - OAuth2:
+          - Assets.Writers
+
+  /dashboards/{dashboard_name}:
+    parameters:
+      - name: dashboard_name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Returns the settings of a device
+      operationId: getDeviceEUI
+      description: Determine the EUI of the device assocoated to the dashboard
+      responses:
+        "200":
+          description: successfully retrieved device settings
+        "400":
+          description: invalid arguments
+        "401":
+          description: unauthorized
+        "500":
+          description: server error when getting settings of a device
+      security:
+        - OAuth2:
+          - Assets.Readers
+
+components:
+  schemas:
+    MacAddress:
+      pattern: "^([0-9a-fA-F]{1,2}\\-){7}[0-9a-fA-F]{1,2}$"
+      type: string
+      description: a device MAC address
+    IdentityCardBaseEntry:
+      type: object
+      properties:
+        process_function:
+          type: string
+          description: |
+            Type of processing the machine performs. Possible values are :
+              * Compressor
+              * Conveyor
+              * Crusher
+              * Elevator
+              * Fan
+              * Pump
+              * Valve
+              * other, user-defined (a string of at most 255 characters).
+        orientation:
+          type: string
+          enum:
+          - '- ↓ - ⟳'
+          - '- ↓ X ⟳'
+          - '- ↓ Y ⟳'
+          - '- ↓ Z ⟳'
+          - X ↓ - ⟳
+          - X ↓ X ⟳
+          - X ↓ Y ⟳
+          - X ↓ Z ⟳
+          - Y ↓ - ⟳
+          - Y ↓ X ⟳
+          - Y ↓ Y ⟳
+          - Y ↓ Z ⟳
+          - Z ↓ - ⟳
+          - Z ↓ X ⟳
+          - Z ↓ Y ⟳
+          - Z ↓ Z ⟳
+        type:
+          type: string
+          description: |
+            machine part where the device is installed; can be one of these :
+              * Bearing
+              * Gearbox
+              * Load
+              * Motor
+              * Pulley
+              * Valve body
+              * Pipe
+              * other, user-defined (a string of at most 50 characters)
+        analysis_profile:
+          type: string
+          enum:
+          - Rotating
+          - Non-rotating
+          - Valve
+        manufacturer:
+          maxLength: 255
+          type: string
+          description: The machine manufacturer
+        model:
+          maxLength: 255
+          type: string
+          description: The machine model
+        subtype:
+          type: string
+        tags:
+          type: string
+          description: |
+            Tags used as filter when selecting dashboards; a list of comma-separated strings.
+            The list of tags must be a string of at most 255 characters.
+        sensor_location:
+          maxLength: 50
+          type: string
+          description: |
+            The specific location of the device sensor. Can be one of these :
+              * Casing
+              * Foundations
+              * Input Shaft
+              * Output Shaft
+              * other, user-defined (a string of at most 50 characters).
+    DashboardInfo:
+      allOf:
+      - $ref: '#/components/schemas/IdentityCardBaseEntry'
+      - type: object
+        properties:
+          mac_address:
+            pattern: "^([0-9a-fA-F]{1,2}\\-){7}[0-9a-fA-F]{1,2}$"
+            type: string
+            description: the device MAC address
+          machine_class:
+            type: string
+            description: |
+              The power class of the machine. Can be one of these :
+                * Class I, Class II, Class III or Class IV
+                * Machine > 15kW | P <= 300kW (Rigid)
+                * Machine > 15kW | P <= 300kW (Flexible)
+                * Machine > 15kW | P > 300kW (Rigid)
+                * Machine > 15kW | P > 300kW (Flexible)
+                * Rotodynamics pumps > 1kW | Category I <= 200kW
+                * Rotodynamics pumps > 1kW | Category I > 200kW
+                * Rotodynamics pumps > 1kW | Category II <= 200kW
+                * Rotodynamics pumps > 1kW | Category II > 200kW
+                * other, used-defined (a string of at most 50 characters).
+          org_type:
+            type: string
+            description: the type of organization identifier
+          org_id:
+            type: string
+            description: an organization identifier
+          length_unit:
+            type: string
+            description: the unit used to display length values
+            enum:
+            - inch
+            - meter
+          temperature_unit:
+            type: string
+            description: the unit used to display temperature values
+            enum:
+            - celsius
+            - fahrenheit
+          grafana_token:
+            type: string
+            description: a valid Grafana API token
+    DashboardCreationInfo:
+      required:
+      - analysis_profile
+      - grafana_token
+      - mac_address
+      - machine_class
+      - orientation
+      - process_function
+      - type
+      allOf:
+      - $ref: '#/components/schemas/DashboardInfo'
+    DashboardUpdateInfo:
+      required:
+      - grafana_token
+      - mac_address
+      allOf:
+      - $ref: '#/components/schemas/DashboardInfo'
+    DeviceSettingsInfo:
+      type: object
+      properties:
+        client:
+          type: string
+          description: the client identifier attached to a LoRaWAN gateway
+        gateway:
+          type: string
+          description: the LoRaWAN gateway identifier
+        command:
+          type: string
+          description: |
+            A value specifying the group of device settings to be updated.
+            valid values are :
+              * "70" (scheduling settings)
+              * "71" (advanced settings)
+              * "74" (extension settings)
+              * "64" (simple reboot command)
+          enum:
+          - "70"
+          - "71"
+          - "74"
+          - "64"
+        settings:
+          type: string
+          description: an hex string representing the settings to be applied
+    DeviceList:
+      type: object
+      properties:
+        org_id:
+          type: integer
+        org_name:
+          type: string
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeviceList_devices'
+    DeviceList_devices:
+      type: object
+      properties:
+        mac_address:
+          $ref: '#/components/schemas/MacAddress'
+        dashboard_name:
+          type: string
+
+  securitySchemes:
+    GrafanaToken:
+      type: apiKey
+      description: Grafana service account token
+      name: grafana_token
+      in: query
+    BasicAuth:
+      type: http
+      scheme: basic
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
+          scopes:
+            Assets.Writers: Allowed to read and update assets
+            Assets.Readers: Allowed only to read assets
